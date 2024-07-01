@@ -68,6 +68,7 @@ _convertLines(ScriptString, doPost:=!gUseMasking)               ; 2024-06-26 REN
    global LabelsToFunc := Array()                       ; List of labels that were converted to funcs
    global mGuiCType    := map()                        	; Create a map to return the type of control
    global mGuiCObject  := map()                        	; Create a map to return the object of a control
+   global UseLastName  := False                          ; Keep track of if we use the last set name in GuiList
    global OnMessageMap := map()                         ; Create a map of OnMessage listeners
    global NL_Func          := ""                      	; _Funcs can use this to add New Previous Line
    global EOLComment_Func  := ""                      	; _Funcs can use this to add comments at EOL
@@ -125,6 +126,8 @@ _convertLines(ScriptString, doPost:=!gUseMasking)               ; 2024-06-26 REN
    Loop
    {
       O_Index++
+;      ToolTip("Converting line: " O_Index)
+
       if (oScriptString.Length < O_Index) {
          ; This allows the user to add or remove lines if necessary
          ; Do not forget to change the O_index if you want to remove or add the line above or lines below
@@ -234,13 +237,25 @@ _convertLines(ScriptString, doPost:=!gUseMasking)               ; 2024-06-26 REN
          if (oScriptString.Length < O_Index + 1) {
             break
          }
-         FirstNextLine := SubStr(LTrim(oScriptString[O_Index + 1]), 1, 1)
-         FirstTwoNextLine := SubStr(LTrim(oScriptString[O_Index + 1]), 1, 1)
-         TreeNextLine := SubStr(LTrim(oScriptString[O_Index + 1]), 1, 1)
-         if (FirstNextLine ~= "[,\.]" or FirstTwoNextLine ~= "[\?:]\s" or FirstTwoNextLine = "||" or FirstTwoNextLine = "&&" or FirstTwoNextLine = "or" or TreeNextLine = "and") {
+
+         FirstNextLine      := SubStr(LTrim(oScriptString[O_Index + 1]),    1, 1)
+         ; 2024-06-30, AMB - FIXED - these are incorrect, they both capture first character only
+;         FirstTwoNextLine := SubStr(LTrim(oScriptString[O_Index + 1]), 1, 1)
+;         TreeNextLine := SubStr(LTrim(oScriptString[O_Index + 1]), 1, 1)
+         FirstTwoNextLine   := SubStr(LTrim(oScriptString[O_Index + 1]),    1, 2)       ; now captures 2 chars
+         ThreeNextLine      := SubStr(LTrim(oScriptString[O_Index + 1]),    1, 3)       ; now captures 3 chars
+         if (FirstNextLine ~= "[,\.]"  || FirstTwoNextLine  ~= "\?\h"                   ; tenary (?)
+                                       || FirstTwoNextLine  = "||"
+                                       || FirstTwoNextLine  = "&&"
+                                       || FirstTwoNextLine  = "or"
+                                       || ThreeNextLine     = "and"
+                                       || ThreeNextLine     ~= ":\h(?!:)")              ; tenary (:) - fix hotkey mistaken for tenary colon
+
+         {
             O_Index++
-            ; Known effect : removes the linefeeds and comments of continuation sections
-            Line .= RegExReplace(oScriptString[O_Index], "(\s+`;.*)$", "")
+            ; 2024-06-30, AMB Fix missing linefeed - Issue #72
+            ; FIXED (Known effect : removes the linefeeds and comments of continuation sections)
+            Line .= "`r`n" . RegExReplace(oScriptString[O_Index], "(\h+`;.*)$", "")
          } else {
             break
          }
@@ -1477,10 +1492,25 @@ _FileRead(p) {
    Return format("{1} := Fileread({2})", p[1], ToExp(p[2]))
 }
 _FileReadLine(p) {
+   global Indentation
    ; FileReadLine, OutputVar, Filename, LineNum
    ; Not really a good alternative, inefficient but the result is the same
 
-   Return p[1] " := StrSplit(FileRead(" p[2] "),`"``n`",`"``r`")[" P[3] "]"
+;   Return p[1] " := StrSplit(FileRead(" p[2] "),`"``n`",`"``r`")[" P[3] "]"
+
+   ; 2024-06-28, AMB Issue #20
+   ; is this proper conversion?
+   newLine  := '`r`n'   . Indentation
+   lineTab  := newLine  . '`t'
+   cmd :=       'try {'
+            .   lineTab     . 'Global ErrorLevel := 0'
+            .   lineTab     . p[1] . ' := StrSplit(FileRead(' p[2] '),`"``n`",`"``r`")[' P[3] ']'
+            .   newLine     . '} Catch {'
+            .   lineTab     . p[1] . ' := ""'
+            .   lineTab     . 'ErrorLevel := 1'
+            .   newLine     . '}'
+
+   Return cmd
 }
 _FileSelect(p) {
    ; V1: FileSelectFile, OutputVar [, Options, RootDir\Filename, Title, Filter]
@@ -1566,6 +1596,7 @@ _Gui(p) {
    global TreeViewNameDefault
    global StatusbarNameDefault
    global GuiList
+   global UseLastName
    global Orig_ScriptString	; array of all the lines
    global oScriptString	; array of all the lines
    global O_Index	; current index of the lines
@@ -1585,8 +1616,22 @@ _Gui(p) {
       ControlName := ""
       ControlObject := ""
 
-      if RegExMatch(GuiLine, "i)^\s*Gui\s*[\s,]\s*[^,\s]*:.*$")
-      {
+      if (p[1] = "New" and GuiList != "") {
+         if !InStr(GuiList, GuiNameDefault) {
+            GuiNameLine := GuiNameDefault
+         } else {
+            loop {
+               if !InStr(GuiList, GuiNameDefault A_Index) {
+                  GuiNameLine := GuiNameDefault A_Index
+                  break
+               }
+            }
+            UseLastName := True
+         }
+      } else if UseLastName {
+         RegExMatch(GuiList, "([^|]*)\|$", &match)
+         GuiNameLine := match[1]
+      } else if RegExMatch(GuiLine, "i)^\s*Gui\s*[\s,]\s*[^,\s]*:.*$") {
          GuiNameLine := RegExReplace(GuiLine, "i)^\s*Gui\s*[\s,]\s*([^,\s]*):.*$", "$1", &RegExCount1)
          GuiLine := RegExReplace(GuiLine, "i)^(\s*Gui\s*[\s,]\s*)([^,\s]*):(.*)$", "$1$3", &RegExCount1)
          if (GuiNameLine = "1") {
