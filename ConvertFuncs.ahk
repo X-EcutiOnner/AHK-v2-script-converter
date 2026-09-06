@@ -347,6 +347,8 @@ FinalizeConvert(&code)
       code := FixByRefParams(code)                                                      ; Replace ByRef with & in func declarations and calls - see related fixFuncParams()
    Prog.ULog(,  pp 'Fix Increment/Decrement...'                 )                       ; update UI - current operation
       code := FixIncDec(code)                                                           ; 2025-10-10 AMB, ADDED to cover issue #350
+   Prog.ULog(,  pp 'Fix string + concat...'                     )                       ; update UI - current operation
+      FixStrPlusConcat(&code)                                                           ; "text"+var -> "text" . var (v2 forbids + after a literal string)
    Prog.ULog(,  pp 'Remove ComObjMissing...'                    )                       ; update UI - current operation
       code := RemoveComObjMissing(code)                                                 ; Removes ComObjMissing() and variables
    Prog.ULog(,  pp 'Add CB Args for Gui...'                     )                       ; update UI - current operation
@@ -699,6 +701,18 @@ lp_SplitLine(&lineStr) {
       return lineOpen
    }
    return lineOpen
+}
+;################################################################################
+; 2026-09-05 LOCAL (breakage #11): v1 allowed "text"+var (numeric add with a
+; literal string left operand never happened in practice - v2 FORBIDS it at
+; parse time: 'Unexpected operator following literal string'). Rewrite a
+; quoted-string followed by '+' into string concatenation ('.'). MUST run on
+; C&S-masked code (FinalizeConvert premasks at 85%) so only real quoted-string
+; tags (not comments) are rewritten. "+=" and "++" are left alone.
+FixStrPlusConcat(&code)
+{
+   nQS  := '\Q' gTagPfx 'QS_' '\E\w+' '\Q' gTagTrl '\E'                                      ; quoted-string mask tag
+   code := RegExReplace(code, '(' nQS ')\h*\+\h*(?![+=])', '$1 . ')
 }
 ;################################################################################
 ; Removes ComObjMissing and references to it from functions
