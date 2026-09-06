@@ -1,0 +1,6 @@
+VarSetCapacity(buf, 8, 0)
+NumPut(1, buf, "Int")
+NumPut(A_PtrSize, SizeInBytes, CopyDataStruct)
+NumPut(2*A_PtrSize, SizeInBytes, CopyDataStruct)
+x := NumGet(buf, A_PtrSize)
+y := NumGet(buf, "Int")
