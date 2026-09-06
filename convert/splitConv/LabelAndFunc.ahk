@@ -1275,6 +1275,27 @@ FixRedundantExits(&code, targ:='')
 	code := clsCodeChop.RestoreMasksAll(code)												; remove all masking from code
 }
 ;################################################################################
+; v2 requires an empty Catch block's braces on separate lines:
+;     v1  }catch{}            (legal in v1, SYNTAX ERROR in v2)
+;     v2  }catch{
+;         }
+; Only rewrites EMPTY blocks ({}); a catch with a body is left untouched.
+FixEmptyCatch(&code)
+{
+   nEC := '(?im)^(?<ind>\h*)}'
+       .  '(?<csp>\h*)catch'                                                       ; }catch
+       .  '(?<par>(?:\h+(?:Error\h+as\h+)?\w+)?)'                                  ; optional (Error as) e
+       .  '(?<sp2>\h*)\{\h*\}'                                                     ; empty block on same line
+       .  '(?<trail>[^\r\n]*)$'                                                    ; optional trailing comment
+   pos := 1
+   while (pos := RegExMatch(code, nEC, &m, pos)) {
+      repl := m.ind . '}catch' . m.par . m.sp2 . '{'                               ; }catch...{
+            . '`r`n' . m.ind . '}' . m.trail                                       ; (comment on closing brace line)
+      code := SubStr(code, 1, pos - 1) . repl . SubStr(code, pos + StrLen(m[]))
+      pos += StrLen(repl)
+   }
+}
+;################################################################################
 ; See addHKCmdCBArgs() for adding param to func declaration
 ; 2025-10-12 AMB, ADDED to fix #328
 addHKCmdFunc(varName)
