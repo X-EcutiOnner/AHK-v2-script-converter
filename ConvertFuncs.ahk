@@ -373,6 +373,8 @@ FinalizeConvert(&code)
       HKReturn(&code)                                                                   ; add return before each HK
    Prog.ULog(,pp 'Removing redundant exit commands...'          )                       ; update UI - current operation
       FixRedundantExits(&code)                                                          ; remove redundant/unnecessary exit commands
+   Prog.ULog(,pp 'Fix one-line empty Catch blocks...'           )                       ; update UI - current operation
+      FixEmptyCatch(&code)                                                              ; }catch{} -> }catch{`r`n} (illegal in v2)
    Prog.ULog(90,pp 'Restore Comments/Strings...'                )                       ; update UI - current operation - 90% complete
       Mask_R(&code, 'C&S')                                                              ; ensure all comments/strings are restored (just in case)
 
