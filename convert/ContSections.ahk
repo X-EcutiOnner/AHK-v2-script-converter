@@ -90,6 +90,19 @@ class CSect
 		; code is a properly formatted continuation section
 		; route code to proper function for conversion
 
+		; 2026-09-08 LOCAL (breakage #4/#6/#7 family): a TEXT-HEAD continuation -
+		; v1 'Text`n' followed by a '(' block (MsgBox/InputBox text-param
+		; continuations, e.g. 'MsgBox, 16, Title, Line 1`n' + block). The command
+		; prefix was already consumed by the param splitter, so the head is plain
+		; text ending in `` `n `` - NOT a command. Falling through to _conv_LegExp
+		; emitted the merged text UNQUOTED ('Illegal character in expression',
+		; MsgBox_ContSec_lead-text). Emit one quoted multi-line string instead
+		; (valid v2 inside call parens) with %var% as concat operands.
+		if (RegExMatch(mCS.head, '(?i)^.+``n\h*$')
+		&& !RegExMatch(mCS.head, '[,:=("]')) {												; not a command/assignment/quote head
+			return CSect._conv_TextCont(code)												; text + block -> quoted multi-line string
+		}
+
 		if	(mCS.head ~= CSect.nLegAssignVar		. '\h*$')	{
 			return CSect._conv_LegAssignVar(code)											; [var = %var%]
 		}
@@ -118,6 +131,34 @@ class CSect
 			}
 			return code
 		}
+	}
+	;############################################################################
+	; 2026-09-08 LOCAL: quote a text-head continuation ('Text`n' + '(' block) as
+	; ONE multi-line string literal - valid v2 inside call parens (the old
+	; fallback emitted the merged text unquoted). %var% tokens become bare
+	; concat operands (v2 auto-concat), v1 `""` quote-escapes become `` `" ``.
+	; Runs on C&S-masked code; masks are restored by the pipeline's final
+	; Mask_R('C&S') (FinalizeConvert).
+	Static _conv_TextCont(code)
+	{
+		work := RegExReplace(code, '""', '``"')												; v1 CS quote-escape -> v2
+		work := StrReplace(work, '"', '``"')													; any remaining literal DQ -> v2 escape
+		nVar := '%([^%\r\n]+)%'																; v1 deref token
+		out := ''
+		scanPos := 1
+		seg := ''
+		While (RegExMatch(work, nVar, &mVar, scanPos)) {
+			seg .= SubStr(work, scanPos, mVar.Pos - scanPos)
+			if (Trim(seg) != '')
+				out .= '"' seg '" '
+			out .= mVar[1] ' '
+			seg := ''
+			scanPos := mVar.Pos + mVar.Len
+		}
+		seg .= SubStr(work, scanPos)
+		if (Trim(seg) != '')
+			out .= '"' seg '"'
+		return RegExReplace(out, '\s+$', '')												; drop trailing ws after a final %var% operand
 	}
 	;############################################################################
 	; head	->	var/cmd :=  %? "?
