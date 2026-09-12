@@ -405,14 +405,14 @@ _getListP4(OptCtrl, OptList, &TxtList, &LineResult, &LineSuffix)
 ; 2026-06-18 AMB, UPDATED - to prevent colon in := from being mistaken for label:
 ; TODO
 ;	ADD SUPPORT FOR V1 EXPRESSION STRINGS, for SubCommand and ControlID
-;	ADD SUPPORT FOR TERNANY IFS, for SubCommand and ControlID
+;	ADD SUPPORT FOR TERNANY IFS, for SubCommand
 ;	ADD SUPPORT FOR P1 BEING '+Default' - see DragDropPDF.ahk
 GuiControlConv(p) {
-	global gGuiNameDefault, gGuiActiveFont
+	global gGuiNameDefault, gGuiActiveFont, gEOLComment_Func
 
 	; common to orig, simple, and dynamic handling
-	if (hasTernary(gV1Line))																					; if orig v1 line has ternary expression...
-		return LTrim(gV1Line) . ' `; V1toV2: Ternary not yet supported (coming soon)'							; ... do not process (for now)
+	;if (hasTernary(gV1Line))																					; if orig v1 line has ternary expression...
+	;	return LTrim(gV1Line) . ' `; V1toV2: Ternary not yet supported (coming soon)'							; ... do not process (for now)
 	p1			:= _splitParam(p[1]), SubCommand := p1.subCmd, GuiName := p1.guiName							; get guiName and subCmd from P1
 	ControlID	:= Trim(RTrim(p[2],' :')) ; remove trailing colon from labels									; get ctrlID from P2
 	Value		:= Trim(p[3])																					; get value  from P3
@@ -423,6 +423,33 @@ GuiControlConv(p) {
 			return retStr																						; ... 	return result
 		_getCtrlDetails(GuiName, ControlID, Trim(p[2]), &ControlObject:='', &ctrlType:='')						; ... get ControlObject and ctrlType
 	}
+	else if (hasTernary(p[2])) {
+		ControlObject   := "(" LTrim(ControlID, "% ") ")"
+		ternaryCtrls    := getTernaryResults(ControlID)															; Parse each ternary control individually
+		exprFlag := false
+		mismatchFlag := false
+		ctrlType := ""
+
+		for (ctrl in ternaryCtrls) {
+			if (!InStr(ctrl, '"'))																				; TODO: We try to catch expressions - this is cheap but not bulletproof
+				exprFlag := true
+			fCtrl := Trim(ctrl, '" `t')																			; Format to be like non-ternary counterpart
+			newObj := gmGuiCtrlObj.Has(fCtrl) ? gmGuiCtrlObj[fCtrl] : gCtrlPfx fCtrl
+			ControlObject := StrReplace(ControlObject, '"' fCtrl '"', newObj)
+			
+			oldCtrlType := ctrlType
+			ctrlType := gmGuiCtrlType.Has(newObj) ? gmGuiCtrlType[newObj] : ''
+			if (ctrlType != "" && oldCtrlType != "" && ctrlType != oldCtrlType)
+				mismatchFlag := true
+		}
+
+		if (exprFlag)
+			gEOLComment_Func .=
+				'V1toV2: Expression in ternary requires manual fixing, try: %"ogcTYPE" . EXPRESSION%'
+		if (mismatchFlag)
+			gEOLComment_Func .=
+				'V1toV2: Ternary control types are different, check docs to ensure method is valid'
+	}
 	else {	; for orig naming																					; if using orig naming method...
 		ControlObject	:= gmGuiCtrlObj.Has(ControlID) ? gmGuiCtrlObj[ControlID] : gCtrlPfx ControlID			; ... set ControlObject
 		ctrlType		:= gmGuiCtrlType.Has(ControlObject) ? gmGuiCtrlType[ControlObject] : ''					; ... set ctrlType
@@ -431,7 +458,7 @@ GuiControlConv(p) {
 	if (SubCommand = "") {
 		if (ctrlType = "Groupbox" || ctrlType = "Button" || ctrlType = "Link") {
 			SubCommand := "Text"
-		} else if (ctrlType = "Radio" && (Value != "0" || Value != "1" || Value != "-1" || InStr(Value, "%"))) {
+		} else if (ctrlType = "Radio" && (Value != "0" && Value != "1" && Value != "-1" || InStr(Value, "%"))) {
 		;} else if (ctrlType = "Radio" && (Value != 0 && Value != 1 && Value != -1 && InStr(Value, "%"))) {
 			SubCommand := "Text"
 		}

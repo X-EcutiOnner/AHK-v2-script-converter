@@ -1755,6 +1755,43 @@ class clsNodeMap	; 'block map' might be better term
 	return true																					; should have ternary exp
 }
 ;################################################################################
+														getTernaryResults(srcStr)
+;################################################################################
+{
+;	Returns an array of ternary results
+;	Should handle nested ternaries
+	qDepth := 0 ; Number of ? deep
+	results := []
+	Mask_T(&srcStr, "QS")
+
+	tfArr := StrSplit(srcStr, "?")
+	i := 1
+	for segment in tfArr {
+		if (i == 1) {
+			i++
+			continue ; skip test expression
+		}
+
+		tf := StrSplit(segment, ":")
+		results.Push(tf[1])
+		if (tf.Has(2) && !tfArr.Has(i + 1))
+			results.Push(tf[2])
+		
+		i++
+	}
+
+	i := 1
+	temp := ""
+	while (i <= results.Length) {
+		temp := results[i]
+		Mask_R(&temp, "QS")
+		results[i] := temp
+		i++
+	}
+
+	return results
+}
+;################################################################################
 															escRegexChars(srcStr)
 ;################################################################################
 {
